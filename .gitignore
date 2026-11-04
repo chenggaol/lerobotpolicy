@@ -1,0 +1,10 @@
+# Only track selected paths
+/*
+!/my_policy/
+!/z_notes/
+!/requirements-lock-linux.txt
+!/requirements-windows.txt
+!/.gitignore
+__pycache__/
+*.pyc
+!/README.md

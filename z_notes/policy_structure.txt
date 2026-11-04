@@ -1,0 +1,72 @@
+/home/cl676767/lerobot/
+├── my_policy/
+│   ├── __init__.py              # imports config+modeling so registration fires
+│   ├── configuration_mine.py    # @PreTrainedConfig.register_subclass("mine") → MineConfig
+│   ├── modeling_mine.py         # MinePolicy(PreTrainedPolicy) + Encoder + Head
+│   └── processor_mine.py        # make_mine_pre_post_processors()
+├── scripts/
+│   ├── convert_ckpt.py          # your .pt  →  lerobot checkpoint dir
+│   └── run_arm.py               # standalone control loop (bring-up)
+├── IK_layer.py
+└── outputs/mine_ckpt/
+    ├── config.json              # written by config._save_pretrained
+    ├── model.safetensors        # written by save_pretrained
+    ├── policy_preprocessor/     # normalization stats live here
+    └── policy_postprocessor/
+
+
+
+4. Loading your .pt
+This is the part that bites people: from_pretrained does not read .pt. It reads a directory containing config.json + model.safetensors (pretrained.py:168-225). So write a one-time conversion:
+
+# scripts/convert_ckpt.py
+import torch
+from lerobot.configs.types import FeatureType, PolicyFeature
+from lerobot.processor import make_default_pre_post_processors
+from my_policy import MineConfig, MinePolicy
+
+cfg = MineConfig(
+    input_features={
+        "observation.state":         PolicyFeature(FeatureType.STATE,  shape=(6,)),
+        "observation.images.front":  PolicyFeature(FeatureType.VISUAL, shape=(3, 480, 640)),
+    },
+    output_features={"action": PolicyFeature(FeatureType.ACTION, shape=(6,))},
+    device="cpu",
+)
+
+policy = MinePolicy(cfg)
+raw = torch.load("my_model.pt", map_location="cpu", weights_only=True)
+sd = raw.get("state_dict", raw)
+# remap keys if your training script named them differently:
+# sd = {k.replace("backbone.", "encoder.vision."): v for k, v in sd.items()}
+missing, unexpected = policy.model.load_state_dict(sd, strict=True)
+
+policy.save_pretrained("outputs/mine_ckpt")          # config.json + model.safetensors
+
+stats = {  # per-key mean/std over your dataset — must match training normalization
+    "observation.state": {"mean": ..., "std": ...},
+    "action":            {"mean": ..., "std": ...},
+    "observation.images.front": {"mean": ..., "std": ...},
+}
+pre, post = make_default_pre_post_processors(cfg, stats)
+pre.save_pretrained("outputs/mine_ckpt")
+post.save_pretrained("outputs/mine_ckpt")
+
+5. Running it on the arm
+
+lerobot-rollout \
+  --robot.type=so101_follower --robot.port=/dev/ttyACM0 --robot.id=my_awesome_follower_arm \
+  --robot.cameras='{ front: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}' \
+  --policy.path=outputs/mine_ckpt \
+  --policy.discover_packages_path=my_policy \
+  --fps=30 --display_data=true
+
+
+
+6. Gotchas that will cost you an evening
+Key names are load-bearing. Feature dict keys must be observation.state, observation.images.<cam>, action. Your robot emits shoulder_pan.pos and camera key front; the dataset/preprocessor rename step maps those — use --rename_map if they don't line up.
+Image tensors reach the policy as (B, C, H, W) float in [0,1]; robot.get_observation() gives (H, W, C) uint8. The preprocessor handles this in the recorded-dataset path, not for raw arrays you pass by hand.
+n_action_steps ≤ chunk_size, and n_obs_steps=1 unless you implement obs history in reset()/select_action.
+Call policy.reset() between episodes or the stale action queue fires first.
+Your IK_layer is a processor, not part of the policy. If the model outputs EE poses, put InverseKinematicsEEToJoints in the postprocessor pipeline rather than inside select_action — see robot_kinematic_processor.py. That keeps the policy's action space (EE) separate from the robot's (joints), which is also what your self.action_space field was reaching for.
+Want me to scaffold my_policy/ with these four files filled in against your actual state/action dims, or start with the conversion script for a specific .pt you already have?

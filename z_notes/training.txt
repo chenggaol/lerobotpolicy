@@ -1,0 +1,27 @@
+python -m lerobot.scripts.lerobot_train \
+    --policy.type=mine \
+    --policy.discover_packages_path=my_policy \
+    --policy.push_to_hub=false \
+    --dataset.repo_id=chenggao/so101_pick_cube_20260921_200844 \
+    --output_dir=outputs/train/mine_pick_cube \
+    --batch_size=8 \
+    --steps=50000 \
+    --save_freq=5000 \
+    --log_freq=100 \
+    --num_workers=4 \
+    --wandb.enable=false
+
+other policy flags(still need to add type annotation)
+--policy.horizon=16              # actions predicted per plan
+--policy.n_obs_steps=4           # observation window, in frames
+--policy.n_action_steps=16       # must be ≤ horizon
+--policy.hidden_dim=256
+--policy.n_heads=8
+--policy.n_decoder_layers=2
+--policy.dropout=0.1
+--policy.optimizer_lr=1e-4
+--policy.optimizer_weight_decay=1e-4
+--policy.device=cuda
+
+
+Final loss: 0.019

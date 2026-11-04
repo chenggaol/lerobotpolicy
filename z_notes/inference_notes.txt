@@ -1,0 +1,32 @@
+lerobot-rollout \
+  --strategy.type=base \
+  --inference.type=sync \
+  --policy.path=outputs/armcurl_ckpt \
+  --policy.discover_packages_path=armcurl_policy \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM0 \
+  --robot.id=my_awesome_follower_arm \
+  --robot.max_relative_target=3.0 \
+  --fps=30 --duration=60 --task="armcurl"
+
+
+Inference layers:
+a) Inference backend — --inference.type=sync|rtc
+
+sync (default): one policy call per control tick.
+rtc: Real-Time Chunking, for slow VLAs (Pi0, SmolVLA) where inference can't keep up with 30 Hz. Takes --inference.rtc.execution_horizon, --inference.rtc.max_guidance_weight. Overkill for a 2-layer MLP.
+b) Rollout strategy — --strategy.type=base|sentry|highlight|dagger|episodic
+
+base — run the policy, record nothing. What you want.
+sentry — continuous recording + periodic upload.
+highlight — ring buffer, press s to save the last N seconds.
+dagger — human-in-the-loop; teleop leader can take over and record corrections.
+episodic — episode-oriented recording with reset phases, like lerobot-record.
+All but base require --dataset.repo_id.
+
+c) Which policy — swap --policy.path for any checkpoint (ACT, Diffusion, Pi0, SmolVLA, or another of your own). --policy.discover_packages_path is only needed for out-of-tree plugins like this one.
+
+d)not running policy
+1.replay lerobot-replay --robot.type=so101_follower --robot.port=/dev/ttyACM0 --robot.id=my_awesome_follower_arm --dataset.repo_id=<user>/<repo> --dataset.episode=0
+2.Drive from leader lerobot-teleoperate
+3.Move to hand-written pose,

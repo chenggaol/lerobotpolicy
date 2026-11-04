@@ -1,0 +1,67 @@
+
+usbipd attach --wsl --busid 1-4
+usbipd bind --busid 1-4
+usbipd attach --wsl --busid 1-8
+usbipd bind --busid 1-8
+
+usbipd attach --wsl --busid 3-2
+usbipd bind --busid 3-2
+usbipd attach --wsl --busid 3-3
+usbipd bind --busid 3-3
+
+giving permission to ports
+sudo chmod 666 /dev/ttyACM0   #these are device nodes created for usb servial devices
+sudo chmod 666 /dev/ttyACM1
+sudo chmod 666 /dev/video*
+
+
+
+lerobot-teleoperate   --robot.type=so101_follower   --robot.port=/dev/ttyACM0   --robot.id=my_awesome_follower_arm   --teleop.type=so101_leader   --teleop.port=/dev/ttyACM1   --teleop.id=my_awesome_leader_arm   --robot.cameras='{ front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30, fourcc: MJPG, backend: V4L2}, wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 30, fourcc: MJPG, backend: V4L2}}'   --display_data=true
+
+
+
+lerobot-record \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM1 \
+  --robot.id=my_awesome_follower_arm \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM0 \
+  --teleop.id=my_awesome_leader_arm \
+  --robot.cameras='{ front: {type: opencv, index_or_path: /dev/video4, width: 640, height: 480, fps: 30, fourcc: MJPG, backend: V4L2}, wrist: {type: opencv, index_or_path: /dev/video1, width: 640, height: 480, fps: 30, fourcc: MJPG, backend: V4L2}}' \
+  --dataset.repo_id=chenggao/so101_pick_cube \
+  --dataset.root=/home/cl676767/lerobot/data/so101_pick_cube_2 \
+  --dataset.no_stamp=true \
+  --dataset.single_task="Grab the cube" \
+  --dataset.num_episodes=30 \
+  --dataset.episode_time_s=30 \
+  --dataset.reset_time_s=10 \
+  --dataset.fps=10 \
+  --dataset.push_to_hub=false \
+  --dataset.streaming_encoding=true \
+  --dataset.encoder_threads=2 \
+  --play_sounds=false \
+  --display_data=false
+
+n-new episode and save
+r-discard and reset
+q-keeps every episode saved and finishes
+
+
+left port =  = front = video0
+right port = wrist = video2
+
+side close to black end of adapter ->white/follower = ACM0
+side closer to wire end of adapeter ->black/follower = ACM1
+
+
+Currently synchronous, robot pauses while the new chunk is computed
+
+python -m lerobot.scripts.lerobot_record \
+  --robot.type=so101_follower --robot.port=/dev/ttyACM1 --robot.id=<your_follower_id> \
+  --robot.cameras="{front: {type: opencv, index_or_path: /dev/video4, width: 640, height: 480, fps: 30}, wrist: {type: opencv, index_or_path: /dev/video1, width: 640, height: 480, fps: 30}}" \
+  --dataset.repo_id=chenggao/eval_mine_pick_cube --dataset.root=data/eval_mine_pick_cube \
+  --dataset.single_task="Pick up the cube" --dataset.num_episodes=5 --dataset.fps=10 \
+  --dataset.push_to_hub=false \
+  --policy.path=outputs/train/mine_pick_cube_all_v2/checkpoints/last/pretrained_model \
+  --policy.discover_packages_path=my_policy \
+  --display_data=false

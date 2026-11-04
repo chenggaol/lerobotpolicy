@@ -1,0 +1,35 @@
+robot = SO101Follower(
+        SO101FollowerConfig(
+            port=args.port,
+            id=args.id,
+            max_relative_target=cap,
+        )
+    )
+
+
+Common commands
+
+robot.connect() (starts that shit up) -> robot.disconnect()
+robot.is_connected()
+
+state = robot.get_observation() #defaults to joint positions(in dictionary)
+{
+    "shoulder_pan.pos": ...,
+    "shoulder_lift.pos": ...,
+    "elbow_flex.pos": ...,
+    "wrist_flex.pos": ...,
+    "wrist_roll.pos": ...,
+    "gripper.pos": ...
+}
+
+
+robot.send_action(action) #joint angle dictionary
+
+example script to show its working, moves the elbow joint up 10:
+action = robot.get_observation()
+
+action["elbow_flex.pos"] += 10
+
+robot.send_action(action)
+
+

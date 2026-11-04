@@ -1,0 +1,45 @@
+need to somehow process the collected data to input into policy, using processor?
+
+what is the dataset structure like, how should I process it
+
+Inputs:
+Window
+
+How can I  break the policy into to components, the encoder and action policy
+
+Input:
+-Current poses(angles of joints and gripper)
+*start with joint angle observation space if this doesn't work go end effector
+-Image of current scene
+
+-observation window looks n timesteps into the past
+
+Encoder design:
+Dinov3 image encoder (24 tokens)
+-dino initially outputs 201 tokens, 194 patch tokens
+-combine into n(default 24) patch tokens using
+-frozen
+*COMBINE WITH CONVOLUTION INJECTOR?
+
+MLP for Pose information(joints and gripper angles) (1 token)
+-3 layer mlp, each linear followed by activation funct
+
+Policy design:
+
+Transformer
+-token level attention
+-temporal level attention(one timestep = 1 token, comparison between timesteps)
+
+
+ACT decoder:
+
+
+
+Shape of tensors throughout:
+
+[Batchsize,timestep,token,model_dim(feature)]
+
+
+
+Train with:
+--policy.type=mine --policy.discover_packages_path=my_policy
