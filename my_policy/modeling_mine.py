@@ -86,9 +86,15 @@ class MinePolicy(PreTrainedPolicy):
         #forward pass
         pred = self.model(images, batch[OBS_STATE], obs_pad) # (B, horizon, action_dim)
         actions = batch[ACTION]
-    
-        #loss
-        loss = F.mse_loss(pred, actions, reduction="none")
+
+        #loss (shape (batch,action_horizon,6(joints+gripper state)))
+        loss = F.l1_loss(pred, actions, reduction="none")
+
+        #increase gripper position weighting
+        weights = torch.ones(loss.shape[-1], device = loss.device)
+        weights[-1] = 4.0 #gripper loss set as four times seperate joint losses
+        loss = loss * weights
+        
         #ignore action steps past the end of the episode
         action_is_pad = batch.get("action_is_pad") #(B, horizon)
         if action_is_pad is not None:
@@ -98,4 +104,4 @@ class MinePolicy(PreTrainedPolicy):
             loss = loss.mean()
 
 
-        return loss, {"l2_loss": loss.item()}
+        return loss, {"l1_loss": loss.item()}

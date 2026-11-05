@@ -19,6 +19,9 @@ class Encoder(nn.Module):
         if config.freeze_encoder:
             self.dino.requires_grad_(False)
             self.dino.eval()
+        #state dropout
+        self.state_dropout = config.state_dropout
+
 
         #Need to normalize images using these because dino images trained this way
         self.register_buffer("img_mean", torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
@@ -70,9 +73,22 @@ class Encoder(nn.Module):
         img_token = img_token.reshape(B,T,-1,img_token.shape[-1])#(B,T,49*num_cam,C)
 
         pose_token = self.pose_mlp(state).unsqueeze(2) # (B,T,1,d)
+
+        state_hidden = None
+        if T>1:
+            if self.training and self.state_dropout > 0:
+                drop = torch.rand(B,1,device=state.device) < self.state_dropout #(B,1)one coin per sample
+            else:
+                drop = None
+            if drop is not None:
+                past = torch.arange(T,device=state.device) < T-1
+                state_hidden = drop & past
+                pose_token = pose_token.masked_fill(state_hidden.view(B,T,1,1),0.0)
+        
+
         #combine image and pose token
-        return torch.cat([img_token,pose_token],dim=2) # (B,T,49*2 + 1 = 99,d)
-         
+        tokens = torch.cat([img_token,pose_token],dim=2) # (B,T,49*2 + 1 = 99,d)
+        return tokens, state_hidden
 
 
 # ---------- 2. POLICY HEAD: tokens -> action chunk ----------
@@ -127,7 +143,8 @@ class ActionTransformer(nn.Module):
         for p in (self.summary, self.pos_space, self.pos_time, self.action_queries):
             nn.init.trunc_normal_(p, std=0.02)
 
-    def forward(self, tokens: torch.Tensor, obs_pad: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, obs_pad: torch.Tensor | None = None,
+    state_hidden: torch.Tensor|None= None) -> torch.Tensor:
         # tokens: (B, n_obs, 25, hidden_dim)
         # obs_pad: (B, n_obs) bool, True = padded frame from before the episode started
         # return: (B, horizon, action_dim)
@@ -139,17 +156,33 @@ class ActionTransformer(nn.Module):
         x = x + self.pos_space + self.pos_time
         N = N + 1
 
+        
+        #key padding mask per token, True = ignored as a key
+        #layout per timestep: [summary, 49 front, 49 wrist, pose] -> pose is the last slot
+        token_pad = None
+        spatial_pad = None
+
+        if state_hidden is not None:
+            token_pad = torch.zeros(B,T,N, dtype=torch.bool, device = x.device)
+            token_pad[:,:,-1] = state_hidden
+
+            spatial_pad = token_pad.reshape(B*T,N)
+
         for spatial, temporal in zip(self.spatial, self.temporal):
             #fold time into batch so attention only mixes tokens within a timestep
-            x = spatial(x.reshape(B * T, N, D)).reshape(B, T, N, D)
+            x = spatial(x.reshape(B * T, N, D),src_key_padding_mask=spatial_pad).reshape(B, T, N, D)
             #takes first token from spatial output as a summary token -> (B, T, D)
             summary = temporal(x[:, :, 0, :], src_key_padding_mask=obs_pad)
             #write updated summaries back so the next spatial layer sees temporal context
             x = torch.cat([summary.unsqueeze(2), x[:, :, 1:, :]], dim=2)
 
-        #flatten every token of every timestep into one sequence for the decoder
         memory = self.norm(x).reshape(B, T * N, D)
         memory_pad = obs_pad.repeat_interleave(N, dim=1) if obs_pad is not None else None
+        
+        if token_pad is not None:
+            hidden_pad = token_pad.reshape(B, T * N)
+            memory_pad = hidden_pad if memory_pad is None else memory_pad | hidden_pad
+
 
         queries = self.action_queries.expand(B, -1, -1)                  # (B, horizon, D)
         out = self.decoder(tgt=queries, memory=memory, memory_key_padding_mask=memory_pad)
@@ -165,4 +198,5 @@ class MineModel(nn.Module):
         self.head = ActionTransformer(config)
 
     def forward(self, images, state, obs_pad=None):
-        return self.head(self.encoder(images, state), obs_pad)
+        token,state_hidden = self.encoder(images, state)
+        return self.head(token, obs_pad, state_hidden)

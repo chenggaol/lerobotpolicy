@@ -21,6 +21,7 @@ class MineConfig(PreTrainedConfig):
     n_action_steps: int = 50
     hidden_dim: int = 256
 
+    state_dropout: float = 0.5
     optimizer_lr: float = 1e-4
     optimizer_weight_decay: float = 1e-4
 
